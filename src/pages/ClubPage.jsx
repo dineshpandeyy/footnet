@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import ClubMatches from '../components/ClubMatches';
 import { NEWS_API_KEY, NEWS_API_URL } from '../config/api';
+import ClubEvents from '../components/ClubEvents';
 
 const ClubPage = () => {
   const { clubId } = useParams();
@@ -9,12 +10,13 @@ const ClubPage = () => {
   const [clubNews, setClubNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState(null);
+  const [clubEvents, setClubEvents] = useState([]);
 
   const clubData = {
     'real-madrid': {
       name: 'Real Madrid',
-      logo: 'https://via.placeholder.com/100',
-      banner: 'https://via.placeholder.com/1200x300',
+      logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/5/56/Real_Madrid_CF.svg/1200px-Real_Madrid_CF.svg.png',
+      banner: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Real_Madrid_CF.svg/1200px-Real_Madrid_CF.svg.png',
       description: 'Official Real Madrid fan community. Join discussions, share news, and connect with fellow Madridistas.',
       news: [
         { id: 1, title: 'Champions League Quarter-Final Draw', date: '2024-03-15', excerpt: 'Real Madrid will face Manchester City in the quarter-finals...' },
@@ -31,8 +33,8 @@ const ClubPage = () => {
     },
     'barcelona': {
       name: 'Barcelona',
-      logo: 'https://via.placeholder.com/100',
-      banner: 'https://via.placeholder.com/1200x300',
+      logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/4/47/FC_Barcelona_%28crest%29.svg/1200px-FC_Barcelona_%28crest%29.svg.png',
+      banner: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/FC_Barcelona_%28crest%29.svg/1200px-FC_Barcelona_%28crest%29.svg.png',
       description: 'Official Barcelona fan community. Join discussions, share news, and connect with fellow Culés.',
       news: [
         { id: 1, title: 'La Liga Title Race Heats Up', date: '2024-03-14', excerpt: 'Barcelona remains in the hunt for the La Liga title...' },
@@ -227,18 +229,7 @@ const ClubPage = () => {
           )}
 
           {activeTab === 'events' && (
-            <div className="space-y-4">
-              {club.events?.map((event) => (
-                <div key={event.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {event.title}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {event.date} • {event.location}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <ClubEvents clubId={clubId} />
           )}
 
           {activeTab === 'members' && (
