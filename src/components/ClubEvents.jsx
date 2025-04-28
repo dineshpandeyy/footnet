@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import EventForm from './EventForm';
-import EventList from './EventList';
-import UpcomingEvents from './UpcomingEvents';
+import { EventForm, EventList, UpcomingEvents } from './events';
 
 const API_URL = 'http://localhost:5001'; // Update this to match your backend URL
 
@@ -71,31 +69,63 @@ const ClubEvents = ({ clubId }) => {
     }
   };
 
-  const handleEditEvent = async (eventId, updatedData) => {
+  const handleEditEvent = (event) => {
+    const userData = JSON.parse(localStorage.getItem('user'));
+    const userPhoneNumber = String(userData.phoneNumber).replace(/\s+/g, '');
+    const eventCreatorId = String(event.creatorId).replace(/\s+/g, '');
+    
+    console.log('Edit event check:', {
+      eventId: event._id,
+      eventCreatorId,
+      userPhoneNumber,
+      areEqual: eventCreatorId === userPhoneNumber
+    });
+    
+    if (eventCreatorId !== userPhoneNumber) {
+      setError('Only the event creator can edit this event');
+      return;
+    }
+    
+    setEditingEvent(event);
+    setShowForm(true);
+  };
+
+  const handleEditSubmit = async (eventId, formData) => {
     try {
       const userData = JSON.parse(localStorage.getItem('user'));
+      
+      // Clean the phone number to only include digits
+      const userPhoneNumber = userData.phoneNumber.toString().replace(/[^0-9]/g, '');
+      
+      console.log('Submitting edit:', {
+        eventId,
+        userPhone: userPhoneNumber,
+        originalPhone: userData.phoneNumber
+      });
+      
       const response = await fetch(`${API_URL}/api/events/${eventId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...updatedData,
-          userId: userData.phoneNumber,
+          ...formData,
+          clubId,
+          organizer: userData.name,
+          creatorId: userPhoneNumber // Send cleaned phone number
         }),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update event');
+        console.error('Edit failed:', responseData);
+        throw new Error(responseData.message || 'Failed to update event');
       }
 
-      const data = await response.json();
-      setEvents(events.map(event => 
-        event._id === eventId ? data.event : event
-      ));
-      setEditingEvent(null);
+      setEvents(events.map(e => e._id === eventId ? responseData : e));
       setShowForm(false);
+      setEditingEvent(null);
     } catch (error) {
       console.error('Error updating event:', error);
       setError(error.message);
@@ -189,13 +219,24 @@ const ClubEvents = ({ clubId }) => {
 
         {showForm && (
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-            <h3 className="text-xl font-semibold mb-4">
-              {editingEvent ? 'Edit Event' : 'Create New Event'}
-            </h3>
-            <EventForm 
-              clubId={clubId} 
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                {editingEvent ? 'Edit Event' : 'Create New Event'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingEvent(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <EventForm
+              clubId={clubId}
               onEventCreated={handleCreateEvent}
-              onEventEdited={handleEditEvent}
+              onEventEdited={handleEditSubmit}
               editingEvent={editingEvent}
             />
           </div>
@@ -204,11 +245,8 @@ const ClubEvents = ({ clubId }) => {
         <EventList 
           events={events} 
           onAttendEvent={handleAttendEvent}
-          onEditEvent={(event) => {
-            setEditingEvent(event);
-            setShowForm(true);
-          }}
           user={user}
+          showEditControls={false}
         />
       </div>
 
@@ -219,7 +257,7 @@ const ClubEvents = ({ clubId }) => {
             <h3 className="text-xl font-semibold mb-3">Events You Created</h3>
             <EventList 
               events={createdEvents}
-              onEditEvent={setEditingEvent}
+              onEditEvent={handleEditEvent}
               user={user}
               showEditControls={true}
             />
@@ -229,6 +267,7 @@ const ClubEvents = ({ clubId }) => {
             <EventList 
               events={userEvents}
               user={user}
+              showEditControls={false}
             />
           </div>
         </div>

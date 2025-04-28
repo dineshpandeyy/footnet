@@ -5,6 +5,16 @@ import connectDB from './config/db.js';
 import User from './models/User.js';
 import bcrypt from 'bcrypt';
 import Event from './models/Event.js';
+import Discussion from './models/Discussion.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 dotenv.config();
 const app = express();
@@ -15,6 +25,51 @@ app.use(express.json());
 
 // Connect to MongoDB
 connectDB();
+
+// Create uploads directory with absolute path
+const uploadsDir = path.join(__dirname, '../uploads');
+
+// Create uploads directory if it doesn't exist
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('Uploads directory created at:', uploadsDir);
+  }
+} catch (err) {
+  console.error('Error creating uploads directory:', err);
+}
+
+// Configure multer for handling file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Ensure the directory exists before trying to save
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Not an image! Please upload an image.'), false);
+    }
+  }
+});
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.post('/api/send-otp', async (req, res) => {
@@ -152,30 +207,36 @@ app.get('/api/news', (req, res) => {
 
 app.post('/api/events', async (req, res) => {
   try {
-    const { clubId, title, description, date, location, organizer, maxParticipants, creatorId } = req.body;
+    const { title, description, date, location, maxParticipants, clubId, organizer, creatorId } = req.body;
     
-    if (!clubId || !title || !description || !date || !location || !organizer || !maxParticipants || !creatorId) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
+    console.log('Creating new event:', {
+      creatorId,
+      organizer,
+      clubId
+    });
 
     const event = new Event({
-      clubId,
       title,
       description,
       date,
       location,
+      maxParticipants,
+      clubId,
       organizer,
       creatorId,
-      maxParticipants,
       attendees: []
     });
-    
+
     await event.save();
-    
+    console.log('Event created:', {
+      id: event._id,
+      creatorId: event.creatorId
+    });
+
     res.status(201).json({ message: 'Event created successfully', event });
   } catch (error) {
     console.error('Error creating event:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -235,25 +296,54 @@ app.post('/api/events/:eventId/attend', async (req, res) => {
 app.put('/api/events/:eventId', async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { userId, ...updateData } = req.body;
+    const { title, description, date, location, maxParticipants, clubId, organizer, creatorId } = req.body;
 
+    // Find the event first
     const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
 
-    if (event.creatorId !== userId) {
-      return res.status(403).json({ message: 'Only the event creator can edit this event' });
+    // Clean and compare the IDs
+    const storedCreatorId = event.creatorId.toString().replace(/[^0-9]/g, '');
+    const requestCreatorId = creatorId.toString().replace(/[^0-9]/g, '');
+
+    console.log('Debug IDs:', {
+      stored: storedCreatorId,
+      request: requestCreatorId,
+      original: {
+        stored: event.creatorId,
+        request: creatorId
+      }
+    });
+
+    // Compare the cleaned numbers
+    if (storedCreatorId !== requestCreatorId) {
+      return res.status(403).json({ 
+        message: 'Only the event creator can edit this event',
+        debug: {
+          stored: storedCreatorId,
+          request: requestCreatorId
+        }
+      });
     }
 
+    // If we get here, update is authorized
     const updatedEvent = await Event.findByIdAndUpdate(
       eventId,
-      updateData,
+      {
+        title,
+        description,
+        date,
+        location,
+        maxParticipants
+      },
       { new: true }
     );
 
-    res.json({ message: 'Event updated successfully', event: updatedEvent });
+    res.json(updatedEvent);
   } catch (error) {
+    console.error('Server error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -272,6 +362,393 @@ app.get('/api/events/user/:userId', async (req, res) => {
 
     res.json(events);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/discussions', upload.single('image'), async (req, res) => {
+  try {
+    console.log('Received request body:', req.body);
+    console.log('Received file:', req.file);
+    
+    const { title, content, clubId, authorUserId, authorName } = req.body;
+
+    // Validate required fields with detailed error message
+    if (!clubId || !title || !content || !authorUserId || !authorName) {
+      const missingFields = [];
+      if (!clubId) missingFields.push('clubId');
+      if (!title) missingFields.push('title');
+      if (!content) missingFields.push('content');
+      if (!authorUserId) missingFields.push('authorUserId');
+      if (!authorName) missingFields.push('authorName');
+
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        missingFields: missingFields,
+        received: req.body
+      });
+    }
+
+    const discussion = new Discussion({
+      clubId,
+      title,
+      content,
+      author: {
+        userId: authorUserId,
+        name: authorName
+      },
+      image: req.file ? `/uploads/${req.file.filename}` : null,
+      likes: [],
+      comments: []
+    });
+    
+    await discussion.save();
+    res.status(201).json(discussion);
+  } catch (error) {
+    console.error('Server error creating discussion:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/api/discussions/:clubId', async (req, res) => {
+  try {
+    const { clubId } = req.params;
+    const discussions = await Discussion.find({ clubId })
+      .sort({ createdAt: -1 });
+    res.json(discussions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/discussions/:discussionId/like', async (req, res) => {
+  try {
+    const { discussionId } = req.params;
+    const { userId, name } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    const likeIndex = discussion.likes.findIndex(like => like.userId === userId);
+    if (likeIndex === -1) {
+      discussion.likes.push({ userId, name });
+    } else {
+      discussion.likes.splice(likeIndex, 1);
+    }
+
+    await discussion.save();
+    res.json(discussion);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/discussions/:discussionId/comments', async (req, res) => {
+  try {
+    const { discussionId } = req.params;
+    const { userId, name, content, parentCommentId } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    const newComment = {
+      userId,
+      name,
+      content,
+      createdAt: new Date(),
+      replies: []
+    };
+
+    if (parentCommentId) {
+      // Add reply to existing comment
+      const parentComment = discussion.comments.id(parentCommentId);
+      if (!parentComment) {
+        return res.status(404).json({ message: 'Parent comment not found' });
+      }
+      parentComment.replies.push(newComment);
+    } else {
+      // Add new comment
+      discussion.comments.push(newComment);
+    }
+
+    await discussion.save();
+    res.json(discussion);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/discussions/:discussionId/comments/:commentId/replies', async (req, res) => {
+  try {
+    const { discussionId, commentId } = req.params;
+    const { userId, name, content, parentReplyId } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    const comment = discussion.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    const newReply = {
+      userId,
+      name,
+      content,
+      createdAt: new Date(),
+      likes: [],
+      replies: []
+    };
+
+    if (parentReplyId) {
+      // Find the parent reply in the comment's replies
+      const parentReply = findReplyInReplies(comment.replies, parentReplyId);
+      if (!parentReply) {
+        return res.status(404).json({ message: 'Parent reply not found' });
+      }
+      parentReply.replies.push(newReply);
+    } else {
+      // Add new reply to the comment
+      comment.replies.push(newReply);
+    }
+
+    await discussion.save();
+    res.json(discussion);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Helper function to find a reply in nested replies
+function findReplyInReplies(replies, replyId) {
+  for (const reply of replies) {
+    if (reply._id.toString() === replyId) {
+      return reply;
+    }
+    if (reply.replies && reply.replies.length > 0) {
+      const found = findReplyInReplies(reply.replies, replyId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+app.post('/api/discussions/:discussionId/comments/:commentId/replies/:replyId/like', async (req, res) => {
+  try {
+    const { discussionId, commentId, replyId } = req.params;
+    const { userId, name } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    const comment = discussion.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Find the reply in the comment's replies
+    const reply = findReplyInReplies(comment.replies, replyId);
+    if (!reply) {
+      return res.status(404).json({ message: 'Reply not found' });
+    }
+
+    const likeIndex = reply.likes.findIndex(like => like.userId === userId);
+    if (likeIndex === -1) {
+      reply.likes.push({ userId, name });
+    } else {
+      reply.likes.splice(likeIndex, 1);
+    }
+
+    await discussion.save();
+    res.json(discussion);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/discussions/:discussionId/comments/:commentId/like', async (req, res) => {
+  try {
+    const { discussionId, commentId } = req.params;
+    const { userId, name } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    const comment = discussion.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    const likeIndex = comment.likes.findIndex(like => like.userId === userId);
+    if (likeIndex === -1) {
+      comment.likes.push({ userId, name });
+    } else {
+      comment.likes.splice(likeIndex, 1);
+    }
+
+    await discussion.save();
+    res.json(discussion);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Edit discussion
+app.put('/api/discussions/:discussionId', async (req, res) => {
+  try {
+    const { discussionId } = req.params;
+    const { title, content, userId } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    // Check if the user is the author
+    if (discussion.author.userId !== userId) {
+      return res.status(403).json({ message: 'Only the author can edit this discussion' });
+    }
+
+    discussion.title = title;
+    discussion.content = content;
+    await discussion.save();
+
+    res.json(discussion);
+  } catch (error) {
+    console.error('Error editing discussion:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete discussion
+app.delete('/api/discussions/:discussionId', async (req, res) => {
+  try {
+    const { discussionId } = req.params;
+    const { userId } = req.body;
+
+    const discussion = await Discussion.findById(discussionId);
+    if (!discussion) {
+      return res.status(404).json({ message: 'Discussion not found' });
+    }
+
+    // Check if the user is the author
+    if (discussion.author.userId !== userId) {
+      return res.status(403).json({ message: 'Only the author can delete this discussion' });
+    }
+
+    await Discussion.findByIdAndDelete(discussionId);
+    res.json({ message: 'Discussion deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting discussion:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get club members
+app.get('/api/clubs/:clubId/members', async (req, res) => {
+  try {
+    const { clubId } = req.params;
+    const members = await User.find(
+      { selectedClub: clubId },
+      { name: 1, phoneNumber: 1, selectedClub: 1, followers: 1, following: 1 }
+    );
+    res.json(members);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Follow/Unfollow user
+app.post('/api/users/:userId/follow', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { followerId, followerName, followerPhone, followerClub } = req.body;
+
+    // Get both users
+    const [userToFollow, follower] = await Promise.all([
+      User.findOne({ phoneNumber: userId }),
+      User.findOne({ phoneNumber: followerId })
+    ]);
+
+    if (!userToFollow || !follower) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if already following
+    const isFollowing = userToFollow.followers.some(f => f.userId === followerId);
+
+    if (isFollowing) {
+      // Unfollow
+      userToFollow.followers = userToFollow.followers.filter(f => f.userId !== followerId);
+      follower.following = follower.following.filter(f => f.userId !== userId);
+    } else {
+      // Follow
+      userToFollow.followers.push({
+        userId: followerId,
+        name: followerName,
+        phoneNumber: followerPhone,
+        selectedClub: followerClub
+      });
+      follower.following.push({
+        userId: userToFollow.phoneNumber,
+        name: userToFollow.name,
+        phoneNumber: userToFollow.phoneNumber,
+        selectedClub: userToFollow.selectedClub
+      });
+    }
+
+    await Promise.all([userToFollow.save(), follower.save()]);
+    res.json({ userToFollow, follower });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add this new route to get user discussions
+app.get('/api/discussions/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Use lean() and only select needed fields
+    const discussions = await Discussion.find({ 'author.userId': userId })
+      .select('title content createdAt likes comments clubId author')
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    res.json(discussions);
+  } catch (error) {
+    console.error('Error in /api/discussions/user/:userId:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add this new route to get user profile
+app.get('/api/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Use lean() for better performance when you don't need the full Mongoose document
+    const user = await User.findOne({ phoneNumber: userId }).lean();
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return user data without sensitive information
+    const { password, ...userData } = user;
+    res.json(userData);
+  } catch (error) {
+    console.error('Error fetching user:', error);
     res.status(500).json({ message: error.message });
   }
 });

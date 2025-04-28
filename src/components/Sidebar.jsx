@@ -1,7 +1,13 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
+  const navigate = useNavigate();
+
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
+
   return (
     <div className="w-64 bg-white shadow-lg h-[calc(100vh-4rem)]">
       <div className="p-4">
@@ -29,6 +35,12 @@ const Sidebar = () => {
             />
             <span>Barcelona</span>
           </Link>
+        </div>
+        <div 
+          onClick={handleProfileClick}
+          className="cursor-pointer hover:text-blue-500 transition-colors"
+        >
+          {user?.name || 'Profile'}
         </div>
       </div>
     </div>

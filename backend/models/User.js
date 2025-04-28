@@ -32,6 +32,18 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  followers: [{
+    userId: String,
+    name: String,
+    phoneNumber: String,
+    selectedClub: String
+  }],
+  following: [{
+    userId: String,
+    name: String,
+    phoneNumber: String,
+    selectedClub: String
+  }],
 });
 
 // Drop the old email index if it exists

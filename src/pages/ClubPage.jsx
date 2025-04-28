@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import ClubMatches from '../components/ClubMatches';
 import { NEWS_API_KEY, NEWS_API_URL } from '../config/api';
 import ClubEvents from '../components/ClubEvents';
+import { EventList, EventForm, UpcomingEvents } from '../components/events';
+import { DiscussionList, DiscussionForm } from '../components/discussions';
+import ClubMembers from '../components/ClubMembers';
+
+// Add this line to import API_URL
+const API_URL = 'http://localhost:5001';
 
 const ClubPage = () => {
   const { clubId } = useParams();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('discussion');
   const [clubNews, setClubNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState(null);
   const [clubEvents, setClubEvents] = useState([]);
+  const [showDiscussionForm, setShowDiscussionForm] = useState(false);
+  const [discussions, setDiscussions] = useState([]);
+  const [user, setUser] = useState(null);
 
   const clubData = {
     'real-madrid': {
@@ -76,6 +86,257 @@ const ClubPage = () => {
   };
 
   useEffect(() => {
+    const userData = JSON.parse(localStorage.getItem('user'));
+    setUser(userData);
+    fetchDiscussions();
+  }, [clubId]);
+
+  const fetchDiscussions = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/discussions/${clubId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch discussions');
+      }
+      const data = await response.json();
+      setDiscussions(data);
+    } catch (error) {
+      console.error('Error fetching discussions:', error);
+    }
+  };
+
+  const handleCreateDiscussion = async (formData) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      if (!userData) {
+        throw new Error('User not logged in');
+      }
+
+      console.log('Creating discussion with author:', {
+        authorUserId: userData.phoneNumber,
+        authorName: userData.name
+      });
+
+      // Create a new FormData instance
+      const submitData = new FormData();
+      submitData.append('title', formData.get('title'));
+      submitData.append('content', formData.get('content'));
+      submitData.append('clubId', clubId);
+      submitData.append('authorUserId', userData.phoneNumber); // Changed from author[userId]
+      submitData.append('authorName', userData.name); // Changed from author[name]
+
+      // Add the image if it exists
+      const image = formData.get('image');
+      if (image) {
+        submitData.append('image', image);
+      }
+
+      console.log('Sending data:', {
+        title: formData.get('title'),
+        content: formData.get('content'),
+        clubId,
+        authorUserId: userData.phoneNumber,
+        authorName: userData.name
+      });
+
+      const response = await fetch(`${API_URL}/api/discussions`, {
+        method: 'POST',
+        body: submitData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Server response:', errorData);
+        throw new Error(errorData.message || 'Failed to create discussion');
+      }
+
+      const newDiscussion = await response.json();
+      setDiscussions([newDiscussion, ...discussions]);
+      setShowDiscussionForm(false);
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+      alert(error.message);
+    }
+  };
+
+  const handleLikeDiscussion = async (discussionId) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      
+      // Store current scroll position
+      const currentScroll = window.scrollY;
+      
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userData.phoneNumber,
+          name: userData.name
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to like discussion');
+      }
+
+      const updatedDiscussion = await response.json();
+      
+      // Update discussions without causing a scroll jump
+      setDiscussions(prev => 
+        prev.map(d => d._id === discussionId ? updatedDiscussion : d)
+      );
+      
+      // Use requestAnimationFrame to ensure the scroll is restored after the DOM updates
+      requestAnimationFrame(() => {
+        window.scrollTo(0, currentScroll);
+      });
+    } catch (error) {
+      console.error('Error liking discussion:', error);
+    }
+  };
+
+  const handleComment = async (discussionId, content, parentCommentId = null) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userData.phoneNumber,
+          name: userData.name,
+          content,
+          parentCommentId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add comment');
+      }
+
+      const updatedDiscussion = await response.json();
+      setDiscussions(discussions.map(d => 
+        d._id === discussionId ? updatedDiscussion : d
+      ));
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    }
+  };
+
+  // Add this new function to handle comment likes
+  const handleLikeComment = async (discussionId, commentId) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userData.phoneNumber,
+          name: userData.name
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to like comment');
+      }
+
+      const updatedDiscussion = await response.json();
+      setDiscussions(discussions.map(d => 
+        d._id === discussionId ? updatedDiscussion : d
+      ));
+    } catch (error) {
+      console.error('Error liking comment:', error);
+    }
+  };
+
+  // Add this new function to handle reply likes
+  const handleLikeReply = async (discussionId, commentId, replyId) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}/comments/${commentId}/replies/${replyId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userData.phoneNumber,
+          name: userData.name
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to like reply');
+      }
+
+      const updatedDiscussion = await response.json();
+      setDiscussions(discussions.map(d => 
+        d._id === discussionId ? updatedDiscussion : d
+      ));
+    } catch (error) {
+      console.error('Error liking reply:', error);
+    }
+  };
+
+  const handleEditDiscussion = async (discussionId, updatedData) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...updatedData,
+          userId: userData.phoneNumber
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to edit discussion');
+      }
+
+      const updatedDiscussion = await response.json();
+      setDiscussions(discussions.map(d => 
+        d._id === discussionId ? updatedDiscussion : d
+      ));
+    } catch (error) {
+      console.error('Error editing discussion:', error);
+      alert(error.message);
+    }
+  };
+
+  const handleDeleteDiscussion = async (discussionId) => {
+    console.log('handleDeleteDiscussion called with:', discussionId);
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const response = await fetch(`${API_URL}/api/discussions/${discussionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userData.phoneNumber
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete discussion');
+      }
+
+      setDiscussions(discussions.filter(d => d._id !== discussionId));
+    } catch (error) {
+      console.error('Error deleting discussion:', error);
+      alert(error.message);
+    }
+  };
+
+  useEffect(() => {
     const fetchClubNews = async () => {
       if (activeTab === 'news') {
         setNewsLoading(true);
@@ -127,6 +388,22 @@ const ClubPage = () => {
     fetchClubNews();
   }, [activeTab, clubId]);
 
+  useEffect(() => {
+    // Handle scrolling to specific discussion
+    if (location.state?.scrollToDiscussion) {
+      const discussionElement = document.getElementById(location.state.scrollToDiscussion);
+      if (discussionElement) {
+        discussionElement.scrollIntoView({ behavior: 'smooth' });
+        // Highlight the discussion briefly
+        discussionElement.classList.add('highlight-discussion');
+        setTimeout(() => {
+          discussionElement.classList.remove('highlight-discussion');
+        }, 2000);
+      }
+      setActiveTab('discussion'); // Switch to discussion tab if needed
+    }
+  }, [location.state, discussions]);
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Banner Section */}
@@ -170,17 +447,36 @@ const ClubPage = () => {
 
         <div className="mt-8">
           {activeTab === 'discussion' && (
-            <div className="space-y-4">
-              {club.discussions?.map((discussion) => (
-                <div key={discussion.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {discussion.title}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    By {discussion.author} • {discussion.replies} replies
-                  </p>
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Club Discussions</h2>
+                <button
+                  onClick={() => setShowDiscussionForm(!showDiscussionForm)}
+                  className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+                >
+                  {showDiscussionForm ? 'Cancel' : 'Start Discussion'}
+                </button>
+              </div>
+
+              {showDiscussionForm && (
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                  <h3 className="text-xl font-semibold mb-4">Create New Discussion</h3>
+                  <DiscussionForm 
+                    onSubmit={handleCreateDiscussion}
+                  />
                 </div>
-              ))}
+              )}
+
+              <DiscussionList 
+                discussions={discussions}
+                onLike={handleLikeDiscussion}
+                onComment={handleComment}
+                onLikeComment={handleLikeComment}
+                onLikeReply={handleLikeReply}
+                onEdit={handleEditDiscussion}
+                onDelete={handleDeleteDiscussion}
+                user={user}
+              />
             </div>
           )}
 
@@ -233,11 +529,10 @@ const ClubPage = () => {
           )}
 
           {activeTab === 'members' && (
-            <div className="text-center py-8">
-              <p className="text-gray-500 dark:text-gray-400">
-                Members section coming soon...
-              </p>
-            </div>
+            <ClubMembers 
+              clubId={clubId} 
+              currentUser={user}
+            />
           )}
         </div>
       </div>
