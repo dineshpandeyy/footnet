@@ -10,6 +10,7 @@ const DiscussionItem = ({ discussion, onLike, onComment, onLikeComment, onLikeRe
     const [editedContent, setEditedContent] = useState(discussion.content);
     const [editedTitle, setEditedTitle] = useState(discussion.title);
     const [showComments, setShowComments] = useState(false);
+    const [isImageFullscreen, setIsImageFullscreen] = useState(false);
     const navigate = useNavigate();
   
     const handleComment = () => {
@@ -150,8 +151,44 @@ const DiscussionItem = ({ discussion, onLike, onComment, onLikeComment, onLikeRe
               <img
                 src={discussion.image}
                 alt="Discussion"
-                className="max-h-96 w-full rounded-lg object-cover"
+                className="max-h-96 w-full rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setIsImageFullscreen(true)}
               />
+            </div>
+          )}
+  
+          {/* Fullscreen Image Modal */}
+          {isImageFullscreen && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center"
+              onClick={() => setIsImageFullscreen(false)}
+            >
+              <div className="relative max-w-[90vw] max-h-[90vh]">
+                <button
+                  className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors"
+                  onClick={() => setIsImageFullscreen(false)}
+                >
+                  <svg 
+                    className="w-8 h-8" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth="2" 
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+                <img
+                  src={discussion.image}
+                  alt="Discussion"
+                  className="max-w-full max-h-[90vh] object-contain"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
             </div>
           )}
   
