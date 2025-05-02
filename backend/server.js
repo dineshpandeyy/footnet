@@ -732,6 +732,29 @@ app.get('/api/discussions/user/:userId', async (req, res) => {
   }
 });
 
+// Add the search endpoint BEFORE the user profile endpoint
+app.get('/api/users/search/query', async (req, res) => {
+  try {
+    const { query, clubId } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Search query is required' });
+    }
+
+    // Search for users by name in the same club
+    const users = await User.find({
+      name: { $regex: query, $options: 'i' }, // Case-insensitive search
+      selectedClub: clubId
+    }).select('name phoneNumber selectedClub followers following')
+      .limit(10);
+
+    res.json(users);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Add this new route to get user profile
 app.get('/api/users/:userId', async (req, res) => {
   try {

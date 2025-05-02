@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ClubPage from './pages/ClubPage';
 import UserProfile from './components/UserProfile';
+import News from './pages/News';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
               <Route path="/club/:clubId" element={<ClubPage />} />
               <Route path="/profile" element={<UserProfile />} />
               <Route path="/profile/:userId" element={<UserProfile />} />
+              <Route path="/news" element={<News />} />
             </Routes>
           </main>
         </div>

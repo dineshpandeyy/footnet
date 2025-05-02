@@ -6,6 +6,7 @@ import ClubEvents from '../components/ClubEvents';
 import { EventList, EventForm, UpcomingEvents } from '../components/events';
 import { DiscussionList, DiscussionForm } from '../components/discussions';
 import ClubMembers from '../components/ClubMembers';
+import { CommunitiesSidebar } from '../components/communities';
 
 // Add this line to import API_URL
 const API_URL = 'http://localhost:5001';
@@ -14,9 +15,11 @@ const ClubPage = () => {
   const { clubId } = useParams();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('discussion');
+  const [newsPage, setNewsPage] = useState(1);
   const [clubNews, setClubNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState(null);
+  const [hasMoreNews, setHasMoreNews] = useState(true);
   const [clubEvents, setClubEvents] = useState([]);
   const [showDiscussionForm, setShowDiscussionForm] = useState(false);
   const [discussions, setDiscussions] = useState([]);
@@ -352,6 +355,8 @@ const ClubPage = () => {
             `q=${encodeURIComponent(searchTerm)}` +
             `&language=en` +
             `&sortBy=publishedAt` +
+            `&pageSize=12` +
+            `&page=${newsPage}` +
             `&apiKey=${NEWS_API_KEY}`
           );
 
@@ -361,22 +366,15 @@ const ClubPage = () => {
 
           const data = await response.json();
           const filteredNews = data.articles
-            .filter(article => {
-              // Additional filtering for Real Madrid
-              if (clubId === 'real-madrid') {
-                return (
-                  !article.title.toLowerCase().includes('basketball') &&
-                  !article.title.toLowerCase().includes('handball') &&
-                  !article.title.toLowerCase().includes('nfl') &&
-                  !article.title.toLowerCase().includes('american football')
-                );
-              }
-              // Similar filtering for other clubs
-              return true;
-            })
-            .slice(0, 5);
+            .filter(article =>
+              !article.title.toLowerCase().includes('basketball') &&
+              !article.title.toLowerCase().includes('handball') &&
+              !article.title.toLowerCase().includes('nfl') &&
+              !article.title.toLowerCase().includes('american football')
+            );
 
-          setClubNews(filteredNews);
+          setClubNews(prev => newsPage === 1 ? filteredNews : [...prev, ...filteredNews]);
+          setHasMoreNews(filteredNews.length === 12);
         } catch (err) {
           setNewsError(err.message);
         } finally {
@@ -386,7 +384,10 @@ const ClubPage = () => {
     };
 
     fetchClubNews();
-  }, [activeTab, clubId]);
+    // eslint-disable-next-line
+  }, [activeTab, clubId, newsPage]);
+
+  const handleLoadMoreNews = () => setNewsPage(prev => prev + 1);
 
   useEffect(() => {
     // Handle scrolling to specific discussion
@@ -405,137 +406,190 @@ const ClubPage = () => {
   }, [location.state, discussions]);
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      {/* Banner Section */}
-      <div className="relative h-64">
-        <img 
-          src={club.banner} 
-          alt={`${club.name} banner`} 
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="text-center">
+    <div className="flex">
+      <CommunitiesSidebar currentUser={user} />
+      <main className="flex-1">
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+          {/* Banner Section */}
+          <div className="relative h-64">
             <img 
-              src={club.logo} 
-              alt={`${club.name} logo`} 
-              className="w-24 h-24 mx-auto mb-4"
+              src={club.banner} 
+              alt={`${club.name} banner`} 
+              className="w-full h-full object-cover"
             />
-            <h1 className="text-4xl font-bold text-white">{club.name}</h1>
-            <p className="text-white mt-2">{club.description}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="border-b border-gray-200 dark:border-gray-700">
-          <nav className="-mb-px flex space-x-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="mt-8">
-          {activeTab === 'discussion' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Club Discussions</h2>
-                <button
-                  onClick={() => setShowDiscussionForm(!showDiscussionForm)}
-                  className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
-                >
-                  {showDiscussionForm ? 'Cancel' : 'Start Discussion'}
-                </button>
+            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="text-center">
+                <img 
+                  src={club.logo} 
+                  alt={`${club.name} logo`} 
+                  className="w-24 h-24 mx-auto mb-4"
+                />
+                <h1 className="text-4xl font-bold text-white">{club.name}</h1>
+                <p className="text-white mt-2">{club.description}</p>
               </div>
+            </div>
+          </div>
 
-              {showDiscussionForm && (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                  <h3 className="text-xl font-semibold mb-4">Create New Discussion</h3>
-                  <DiscussionForm 
-                    onSubmit={handleCreateDiscussion}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="border-b border-gray-200 dark:border-gray-700">
+              <nav className="-mb-px flex space-x-8">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="mt-8">
+              {activeTab === 'discussion' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Club Discussions</h2>
+                    <button
+                      onClick={() => setShowDiscussionForm(!showDiscussionForm)}
+                      className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+                    >
+                      {showDiscussionForm ? 'Cancel' : 'Start Discussion'}
+                    </button>
+                  </div>
+
+                  {showDiscussionForm && (
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                      <h3 className="text-xl font-semibold mb-4">Create New Discussion</h3>
+                      <DiscussionForm 
+                        onSubmit={handleCreateDiscussion}
+                      />
+                    </div>
+                  )}
+
+                  <DiscussionList 
+                    discussions={discussions}
+                    onLike={handleLikeDiscussion}
+                    onComment={handleComment}
+                    onLikeComment={handleLikeComment}
+                    onLikeReply={handleLikeReply}
+                    onEdit={handleEditDiscussion}
+                    onDelete={handleDeleteDiscussion}
+                    user={user}
                   />
                 </div>
               )}
 
-              <DiscussionList 
-                discussions={discussions}
-                onLike={handleLikeDiscussion}
-                onComment={handleComment}
-                onLikeComment={handleLikeComment}
-                onLikeReply={handleLikeReply}
-                onEdit={handleEditDiscussion}
-                onDelete={handleDeleteDiscussion}
-                user={user}
-              />
-            </div>
-          )}
-
-          {activeTab === 'news' && (
-            <div className="space-y-4">
-              {newsLoading ? (
-                <div className="flex justify-center items-center p-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                </div>
-              ) : newsError ? (
-                <div className="p-4 text-red-500">
-                  Error: {newsError}
-                </div>
-              ) : clubNews.length === 0 ? (
-                <p className="text-gray-500 text-center">No news available at the moment.</p>
-              ) : (
-                clubNews.map((article, index) => (
-                  <div key={index} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      <a 
-                        href={article.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {article.title}
-                      </a>
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      {new Date(article.publishedAt).toLocaleDateString()}
-                    </p>
-                    <p className="mt-2 text-gray-600 dark:text-gray-300">
-                      {article.description}
-                    </p>
-                    <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      Source: {article.source.name}
+              {activeTab === 'news' && (
+                <div>
+                  {newsLoading && newsPage === 1 ? (
+                    <div className="flex justify-center items-center p-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                  </div>
-                ))
+                  ) : newsError ? (
+                    <div className="p-4 text-red-500">
+                      Error: {newsError}
+                    </div>
+                  ) : clubNews.length === 0 ? (
+                    <p className="text-gray-500 text-center">No news available at the moment.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {clubNews.map((article, index) => (
+                          <div
+                            key={index}
+                            className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg 
+                                       hover:shadow-xl transition-shadow duration-300 border border-gray-200 
+                                       dark:border-gray-700 flex flex-col"
+                          >
+                            <div className="relative h-48 overflow-hidden">
+                              {article.urlToImage ? (
+                                <img
+                                  src={article.urlToImage}
+                                  alt={article.title}
+                                  className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-300"
+                                  onError={e => {
+                                    e.target.onerror = null;
+                                    e.target.src = 'https://placehold.co/600x400?text=No+Image+Available';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                  <span className="text-gray-500 dark:text-gray-400">No Image Available</span>
+                                </div>
+                              )}
+                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+                                <span className="text-white text-sm">{article.source?.name}</span>
+                              </div>
+                            </div>
+                            <div className="p-4 flex-1 flex flex-col">
+                              <h3 className="text-lg font-semibold text-gray-800 dark:text-white line-clamp-2 mb-2">
+                                <a
+                                  href={article.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:text-blue-600 dark:hover:text-blue-400"
+                                >
+                                  {article.title}
+                                </a>
+                              </h3>
+                              <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4 flex-1">
+                                {article.description}
+                              </p>
+                              <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mt-auto">
+                                <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                                <a
+                                  href={article.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                                >
+                                  Read More →
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {hasMoreNews && (
+                        <div className="mt-8 text-center">
+                          <button
+                            onClick={handleLoadMoreNews}
+                            disabled={newsLoading}
+                            className={`px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
+                              transition-colors duration-200 ${newsLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {newsLoading ? 'Loading...' : 'Load More News'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'matches' && (
+                <ClubMatches clubId={clubId} />
+              )}
+
+              {activeTab === 'events' && (
+                <ClubEvents clubId={clubId} />
+              )}
+
+              {activeTab === 'members' && (
+                <ClubMembers 
+                  clubId={clubId} 
+                  currentUser={user}
+                />
               )}
             </div>
-          )}
-
-          {activeTab === 'matches' && (
-            <ClubMatches clubId={clubId} />
-          )}
-
-          {activeTab === 'events' && (
-            <ClubEvents clubId={clubId} />
-          )}
-
-          {activeTab === 'members' && (
-            <ClubMembers 
-              clubId={clubId} 
-              currentUser={user}
-            />
-          )}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
