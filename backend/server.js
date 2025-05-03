@@ -11,6 +11,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import Community from './models/Community.js';
+import CommunityPost from './models/CommunityPost.js';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -772,6 +774,194 @@ app.get('/api/users/:userId', async (req, res) => {
     res.json(userData);
   } catch (error) {
     console.error('Error fetching user:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Create community
+app.post('/api/communities', async (req, res) => {
+  try {
+    const { name, description, type, creatorId, creatorName, creatorPhone, clubId } = req.body;
+
+    // Validate required fields
+    if (!name || !description || !creatorId || !creatorName || !clubId) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const community = new Community({
+      name,
+      description,
+      type,
+      clubId,
+      creatorId,
+      members: [{
+        userId: creatorId,
+        name: creatorName,
+        phoneNumber: creatorPhone,
+        role: 'admin'
+      }]
+    });
+
+    await community.save();
+    res.status(201).json(community);
+  } catch (error) {
+    console.error('Error creating community:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get communities for a specific club
+app.get('/api/communities', async (req, res) => {
+  try {
+    const { clubId } = req.query;
+    if (!clubId) {
+      return res.status(400).json({ message: 'clubId is required' });
+    }
+
+    const communities = await Community.find({ clubId }).sort({ createdAt: -1 });
+    res.json(communities);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Join community
+app.post('/api/communities/:communityId/join', async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const { userId, name, phoneNumber } = req.body;
+
+    const community = await Community.findById(communityId);
+    if (!community) {
+      return res.status(404).json({ message: 'Community not found' });
+    }
+
+    // Check if user is already a member
+    if (community.members.some(member => member.userId === userId)) {
+      return res.status(400).json({ message: 'Already a member' });
+    }
+
+    community.members.push({
+      userId,
+      name,
+      phoneNumber,
+      role: 'member'
+    });
+
+    await community.save();
+    res.json(community);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Leave community
+app.post('/api/communities/:communityId/leave', async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const { userId } = req.body;
+
+    const community = await Community.findById(communityId);
+    if (!community) {
+      return res.status(404).json({ message: 'Community not found' });
+    }
+
+    // Don't allow the creator to leave
+    const member = community.members.find(m => m.userId === userId);
+    if (member?.role === 'admin') {
+      return res.status(400).json({ message: 'Community creator cannot leave' });
+    }
+
+    community.members = community.members.filter(member => member.userId !== userId);
+    await community.save();
+    res.json(community);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Create community post
+app.post('/api/communities/:communityId/posts', upload.single('image'), async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const { content, authorId, authorName } = req.body;
+
+    // Check if user is a member of the community
+    const community = await Community.findById(communityId);
+    if (!community) {
+      return res.status(404).json({ message: 'Community not found' });
+    }
+
+    const isMember = community.members.some(member => member.userId === authorId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Only community members can post' });
+    }
+
+    const post = new CommunityPost({
+      communityId,
+      author: {
+        userId: authorId,
+        name: authorName
+      },
+      content,
+      image: req.file ? `/uploads/${req.file.filename}` : null
+    });
+
+    await post.save();
+    res.status(201).json(post);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get community posts
+app.get('/api/communities/:communityId/posts', async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const posts = await CommunityPost.find({ communityId })
+      .sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add comment to post
+app.post('/api/communities/posts/:postId/comments', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { userId, name, content } = req.body;
+
+    const post = await CommunityPost.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    post.comments.push({
+      userId,
+      name,
+      content
+    });
+
+    await post.save();
+    res.json(post);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get community details
+app.get('/api/communities/:communityId', async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const community = await Community.findById(communityId);
+    
+    if (!community) {
+      return res.status(404).json({ message: 'Community not found' });
+    }
+    
+    res.json(community);
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });

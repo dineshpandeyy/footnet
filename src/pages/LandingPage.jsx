@@ -1,8 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useAuth } from '../context/AuthContext';
 
 const LandingPage = () => {
+  const { user } = useAuth();
+
   const features = [
     {
       title: 'Club-Specific Communities',
@@ -134,28 +137,30 @@ const LandingPage = () => {
             of your club's journey. Your passion for football finds its home here.
           </motion.p>
 
-          <motion.div 
-            className="space-x-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-            <Link 
-              to="/login" 
-              className="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 
-                         text-lg transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
+          {!user && (
+            <motion.div 
+              className="space-x-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
             >
-              Login
-            </Link>
-            <Link 
-              to="/signup" 
-              className="inline-block bg-gradient-to-r from-green-500 to-green-600 text-white px-8 py-4 
-                         rounded-lg hover:from-green-600 hover:to-green-700 text-lg transform 
-                         hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              Sign Up
-            </Link>
-          </motion.div>
+              <Link 
+                to="/login" 
+                className="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 
+                           text-lg transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                Login
+              </Link>
+              <Link 
+                to="/signup" 
+                className="inline-block bg-gradient-to-r from-green-500 to-green-600 text-white px-8 py-4 
+                           rounded-lg hover:from-green-600 hover:to-green-700 text-lg transform 
+                           hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                Sign Up
+              </Link>
+            </motion.div>
+          )}
         </div>
       </motion.div>
 
