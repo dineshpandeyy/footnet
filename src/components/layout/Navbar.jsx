@@ -134,7 +134,7 @@ const Navbar = () => {
                                bg-gradient-to-r from-blue-600 to-indigo-600
                                group-hover:from-blue-500 group-hover:to-purple-600
                                transition-all duration-300">
-                  FootballConnect
+                  FotNet
                 </span>
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r 
                                from-blue-600 to-indigo-600 group-hover:w-full transition-all duration-300" />
